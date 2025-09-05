@@ -3,20 +3,17 @@ import { ArrowDownTrayIcon, ArrowUpTrayIcon } from './icons/Icons';
 
 interface BackupManagerProps {
   onBackup: () => void;
-  onValidate: (data: any) => { isValid: boolean, summary: string };
   onRestore: (data: any) => void;
 }
 
-const BackupManager: React.FC<BackupManagerProps> = ({ onBackup, onValidate, onRestore }) => {
+const BackupManager: React.FC<BackupManagerProps> = ({ onBackup, onRestore }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loadedData, setLoadedData] = useState<any | null>(null);
-  const [backupSummary, setBackupSummary] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isConfirming, setIsConfirming] = useState(false);
 
   const handleImportClick = () => {
     setLoadedData(null);
-    setBackupSummary('');
     setError('');
     setIsConfirming(false);
     fileInputRef.current?.click();
@@ -40,20 +37,15 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onBackup, onValidate, onR
         }
         const data = JSON.parse(text);
         
-        const validationResult = onValidate(data);
-
-        if (validationResult.isValid) {
+        if (typeof data === 'object' && data !== null && 'transactions' in data && 'groups' in data) {
             setLoadedData(data);
-            setBackupSummary(validationResult.summary);
             setError('');
         } else {
-            setLoadedData(null);
-            setBackupSummary('');
+             throw new Error('Il file non sembra un backup valido.');
         }
 
       } catch (error) {
         setLoadedData(null);
-        setBackupSummary('');
         setError('Errore: Il file non è in formato JSON valido o è corrotto.');
         console.error('Error parsing backup file:', error);
       } finally {
@@ -69,13 +61,11 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onBackup, onValidate, onR
     if (!loadedData) return;
     onRestore(loadedData);
     setLoadedData(null);
-    setBackupSummary('');
     setIsConfirming(false);
   };
 
   const handleCancelRestore = () => {
     setLoadedData(null);
-    setBackupSummary('');
     setIsConfirming(false);
   };
 
@@ -84,7 +74,7 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onBackup, onValidate, onR
       <div>
         <h3 className="text-lg font-medium text-slate-800">Esporta Dati</h3>
         <p className="text-sm text-slate-500 mt-1 mb-3">
-          Crea un file di backup contenente tutti i dati dell'applicazione (transazioni, gruppi, membri, impostazioni, ecc.). Conserva questo file in un posto sicuro.
+          Crea un file di backup contenente tutti i dati dell'applicazione (transazioni, gruppi, membri, impostazioni, permessi, ecc.). Conserva questo file in un posto sicuro.
         </p>
         <button
           onClick={onBackup}
@@ -122,16 +112,12 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onBackup, onValidate, onR
             </div>
         )}
         
-        {loadedData && backupSummary && (
+        {loadedData && (
             <div className="mt-6 space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 {!isConfirming ? (
                     <>
-                        <h4 className="text-md font-semibold text-slate-800">Step 1: Riepilogo del File Caricato</h4>
-                        <div className="text-sm text-slate-700 whitespace-pre-wrap">{backupSummary}</div>
-                        <div className="pt-2">
-                            <p className="font-bold text-slate-800">Step 2: Procedi con il Ripristino</p>
-                            <p className="text-sm text-slate-600 mt-1">Se il riepilogo è corretto, clicca il pulsante per passare alla conferma finale.</p>
-                        </div>
+                        <h4 className="text-md font-semibold text-slate-800">File Caricato Correttamente</h4>
+                        <p className="text-sm text-slate-700">Il file di backup è stato letto e sembra valido. Sei pronto per sovrascrivere i dati online?</p>
                         <div className="flex items-center space-x-3 pt-2">
                             <button
                                 onClick={() => setIsConfirming(true)}
@@ -149,10 +135,10 @@ const BackupManager: React.FC<BackupManagerProps> = ({ onBackup, onValidate, onR
                     </>
                 ) : (
                     <>
-                        <h4 className="text-md font-semibold text-slate-800">Step 3: Conferma Finale</h4>
+                        <h4 className="text-md font-semibold text-slate-800">Conferma Finale</h4>
                         <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
                             <p className="font-bold">Questa azione è irreversibile.</p>
-                            <p>Sei assolutamente sicuro di voler sovrascrivere tutti i dati correnti con quelli del file di backup?</p>
+                            <p>Sei assolutamente sicuro di voler sovrascrivere tutti i dati correnti con quelli del file di backup? I dati online verranno persi.</p>
                         </div>
                         <div className="flex items-center space-x-3 pt-2">
                             <button

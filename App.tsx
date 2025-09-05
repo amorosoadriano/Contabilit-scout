@@ -1,8 +1,6 @@
-import React, { useState, useMemo, useCallback } from 'react';
-// FIX: Added TransactionType to the import to resolve a type error in the migration function.
-import { Transaction, Category, Group, ViewType, Member, Unit, MemberInstallments, Installment, QuoteSettings, PaymentMethod, Siblings, TransactionType } from './types';
-import useLocalStorage from './hooks/useLocalStorage';
-import { INITIAL_CATEGORIES, INITIAL_GROUPS, INITIAL_UNITS, INITIAL_QUOTE_SETTINGS, GROUP_COLORS, SIBLINGS_OPTIONS } from './constants';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { Transaction, Category, Group, ViewType, Member, Unit, MemberInstallments, Installment, QuoteSettings, PaymentMethod, TransactionType, UserRole, UserPermissions, FundTransfer, InternalTransfer, SelfFinancingProject, LedgerEntry, LedgerEntryType, FundTransferType, Filters } from './types';
+import { INITIAL_CATEGORIES, INITIAL_GROUPS, INITIAL_UNITS, INITIAL_QUOTE_SETTINGS, GROUP_COLORS, SIBLINGS_OPTIONS, INITIAL_USER_PERMISSIONS } from './constants';
 import Header from './components/Header';
 import Summary from './components/Summary';
 import TransactionList from './components/TransactionList';
@@ -11,167 +9,106 @@ import TransactionForm from './components/TransactionForm';
 import PasswordModal from './components/PasswordModal';
 import SettingsPanel from './components/SettingsPanel';
 import { exportToCsv } from './services/exportService';
-import FilterPanel, { Filters } from './components/FilterPanel';
+import FilterPanel from './components/FilterPanel';
 import QuotePanel from './components/QuotePanel';
 import MemberForm from './components/MemberForm';
 import InstallmentModal from './components/InstallmentModal';
 import AccountsPanel from './components/AccountsPanel';
 import AdvancesPanel from './components/AdvancesPanel';
+import LoginScreen from './components/LoginScreen';
+import FundTransferForm from './components/FundTransferForm';
+import InternalTransferForm from './components/InternalTransferForm';
+import SelfFinancingPanel from './components/SelfFinancingPanel';
+import SelfFinancingProjectForm from './components/SelfFinancingProjectForm';
+import CombinedLedger from './components/CombinedLedger';
 
 type ModalState = 
-  | { type: 'transaction'; data?: Transaction }
-  | { type: 'password' }
+  | { type: 'transaction'; data?: Transaction, context?: { selfFinancingId: string; groupId: string; } }
+  | { type: 'password'; fromScreen?: 'login' | 'elevation' }
   | { type: 'settings' }
   | { type: 'member'; data: { member?: Member; groupId: string } }
-  | { type: 'installment'; data: { member: Member; installmentKey: keyof MemberInstallments } };
-
-// --- Data Migration Functions ---
-const migrateTransactions = (data: any): Transaction[] => {
-    if (!Array.isArray(data)) return [];
-    return data
-        .filter(t => t && typeof t === 'object')
-        .map(t => ({
-            id: t.id || `tx_${Date.now()}_${Math.random()}`,
-            groupId: t.groupId || '',
-            description: t.description || '',
-            amount: typeof t.amount === 'number' ? t.amount : 0,
-            date: t.date || new Date().toISOString().split('T')[0],
-            // FIX: Use TransactionType enum members instead of string literals for type safety.
-            type: t.type === 'INCOME' ? TransactionType.INCOME : TransactionType.EXPENSE,
-            category: t.category || '',
-            paymentMethod: t.paymentMethod || PaymentMethod.CASH,
-            isCampExpense: !!t.isCampExpense,
-            advancedBy: t.advancedBy || null,
-            repaid: !!t.repaid,
-            repaidDate: t.repaidDate || null,
-            repaymentMethod: t.repaymentMethod || null,
-        }));
-};
-
-const migrateGroups = (data: any): Group[] => {
-    if (!Array.isArray(data)) return INITIAL_GROUPS;
-
-    const safeQuoteSettings = (qs: any): QuoteSettings => {
-        const initial = JSON.parse(JSON.stringify(INITIAL_QUOTE_SETTINGS));
-        if (!qs || typeof qs !== 'object') {
-            return initial;
-        }
-        return {
-            installments: (qs.installments && typeof qs.installments === 'object') ? { ...initial.installments, ...qs.installments } : initial.installments,
-            siblingDiscounts: (qs.siblingDiscounts && typeof qs.siblingDiscounts === 'object') ? { ...initial.siblingDiscounts, ...qs.siblingDiscounts } : initial.siblingDiscounts,
-            groupFee: typeof qs.groupFee === 'number' ? qs.groupFee : initial.groupFee,
-            bpParkFee: typeof qs.bpParkFee === 'number' ? qs.bpParkFee : initial.bpParkFee,
-            censimento: typeof qs.censimento === 'number' ? qs.censimento : initial.censimento,
-            preCamp: typeof qs.preCamp === 'number' ? qs.preCamp : initial.preCamp,
-        };
-    };
-
-    return data
-        .filter(g => g && typeof g === 'object')
-        .map((g, index) => ({
-            id: g.id || `group_${Date.now()}_${index}`,
-            name: g.name || `Gruppo ${index + 1}`,
-            color: g.color || GROUP_COLORS[index % GROUP_COLORS.length],
-            quoteSettings: safeQuoteSettings(g.quoteSettings),
-        }));
-};
-
-const migrateMembers = (data: any): Member[] => {
-    if (!Array.isArray(data)) return [];
-
-    const safeInstallments = (insts: any): MemberInstallments => {
-        const defaultInstallment: Installment = { amount: 0, date: null, paymentMethod: null };
-        if (!insts || typeof insts !== 'object') {
-            return {
-                first: { ...defaultInstallment },
-                second: { ...defaultInstallment },
-                third: { ...defaultInstallment },
-                summerCamp: { ...defaultInstallment },
-            };
-        }
-        return {
-            first: { ...defaultInstallment, ...(insts.first && typeof insts.first === 'object' ? insts.first : {}) },
-            second: { ...defaultInstallment, ...(insts.second && typeof insts.second === 'object' ? insts.second : {}) },
-            third: { ...defaultInstallment, ...(insts.third && typeof insts.third === 'object' ? insts.third : {}) },
-            summerCamp: { ...defaultInstallment, ...(insts.summerCamp && typeof insts.summerCamp === 'object' ? insts.summerCamp : {}) },
-        };
-    };
-
-    return data
-        .filter(m => m && typeof m === 'object')
-        .map(m => ({
-            id: m.id || `member_${Date.now()}_${Math.random()}`,
-            groupId: m.groupId || '',
-            name: m.name || '',
-            unit: m.unit || '',
-            siblings: SIBLINGS_OPTIONS.includes(m.siblings) ? m.siblings : '0',
-            installments: safeInstallments(m.installments),
-        }));
-};
-
-const migrateCategories = (data: any): Category[] => {
-    if (!Array.isArray(data)) return INITIAL_CATEGORIES;
-    return data
-        .filter(c => c && typeof c === 'object' && c.name)
-        .map(c => ({
-            id: c.id || `cat_${Date.now()}_${Math.random()}`,
-            name: c.name,
-        }));
-};
-
-const migrateUnits = (data: any): Unit[] => {
-    if (!Array.isArray(data)) return INITIAL_UNITS;
-    return data
-        .filter(u => u && typeof u === 'object' && u.name)
-        .map(u => ({
-            id: u.id || `unit_${Date.now()}_${Math.random()}`,
-            name: u.name,
-        }));
-};
-
+  | { type: 'installment'; data: { member: Member; installmentKey: keyof MemberInstallments } }
+  | { type: 'fundTransfer' }
+  | { type: 'internalTransfer' }
+  | { type: 'selfFinancingProject'; data?: SelfFinancingProject };
 
 const App: React.FC = () => {
-  const [transactions, setTransactions] = useLocalStorage<Transaction[]>('transactions', [], migrateTransactions);
-  const [categories, setCategories] = useLocalStorage<Category[]>('categories', INITIAL_CATEGORIES, migrateCategories);
-  const [groups, setGroups] = useLocalStorage<Group[]>('groups', INITIAL_GROUPS, migrateGroups);
-  const [members, setMembers] = useLocalStorage<Member[]>('members', [], migrateMembers);
-  const [units, setUnits] = useLocalStorage<Unit[]>('units', INITIAL_UNITS, migrateUnits);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [groups, setGroups] = useState<Group[]>(INITIAL_GROUPS);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [units, setUnits] = useState<Unit[]>(INITIAL_UNITS);
+  const [fundTransfers, setFundTransfers] = useState<FundTransfer[]>([]);
+  const [internalTransfers, setInternalTransfers] = useState<InternalTransfer[]>([]);
+  const [selfFinancingProjects, setSelfFinancingProjects] = useState<SelfFinancingProject[]>([]);
   
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('contabilita');
   
   const [currentModal, setCurrentModal] = useState<ModalState | null>(null);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
-  const [confirmOnDelete, setConfirmOnDelete] = useLocalStorage<boolean>('confirmOnDelete', true);
-  
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole>('NONE');
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  const [confirmOnDelete, setConfirmOnDelete] = useState<boolean>(true);
+  const [groupFundManagerId, setGroupFundManagerId] = useState<string | null>(null);
+  const [userPermissions, setUserPermissions] = useState<UserPermissions>(INITIAL_USER_PERMISSIONS);
+
   const [filters, setFilters] = useState<Filters>({
     text: '',
     type: 'ALL',
     category: 'ALL',
     startDate: '',
     endDate: '',
+    ledgerType: 'ALL',
+    groupId: 'ALL',
   });
+
+  useEffect(() => {
+    if (groupFundManagerId === null && groups.length > 0) {
+      const cocaGroup = groups.find(g => g.name === 'Co.Ca.');
+      const newManagerId = cocaGroup ? cocaGroup.id : groups[0].id;
+      setGroupFundManagerId(newManagerId);
+    }
+  }, [groups, groupFundManagerId]);
 
   const handleOpenModal = useCallback((modal: ModalState) => {
     setCurrentModal(modal);
   }, []);
 
   const handleSettingsClick = useCallback(() => {
-    if (isAdminAuthenticated) {
+    if (currentUserRole === 'ADMIN') {
       handleOpenModal({ type: 'settings' });
     } else {
-      handleOpenModal({ type: 'password' });
+      setPendingAction(() => () => handleOpenModal({ type: 'settings' }));
+      handleOpenModal({ type: 'password', fromScreen: 'elevation' });
     }
-  }, [isAdminAuthenticated, handleOpenModal]);
+  }, [currentUserRole, handleOpenModal]);
 
   const handleLoginSuccess = useCallback(() => {
-    setIsAdminAuthenticated(true);
-    setCurrentModal({ type: 'settings' });
-  }, []);
+    setCurrentUserRole('ADMIN');
+    if (pendingAction) {
+        pendingAction();
+        setPendingAction(null);
+    }
+    handleCloseModal();
+  }, [pendingAction]);
 
   const handleCloseModal = useCallback(() => {
     setCurrentModal(null);
   }, []);
+  
+  const handleRoleSelect = (role: 'USER' | 'ADMIN') => {
+      if (role === 'USER') {
+          setCurrentUserRole('USER');
+      } else {
+          handleOpenModal({ type: 'password', fromScreen: 'login' });
+      }
+  };
+
+  const handleLogout = () => {
+      setCurrentUserRole('NONE');
+      setActiveView('contabilita');
+  };
 
   const addTransaction = (transaction: Omit<Transaction, 'id'>) => {
     const newTransaction: Transaction = {
@@ -204,7 +141,9 @@ const App: React.FC = () => {
   };
 
   const deleteTransaction = (id: string) => {
-    const performDelete = () => setTransactions(transactions.filter(t => t.id !== id));
+    const performDelete = () => {
+        setTransactions(prev => prev.filter(t => t.id !== id));
+    };
     if (confirmOnDelete) {
         if (window.confirm('Sei sicuro di voler eliminare questa transazione?')) {
             performDelete();
@@ -212,6 +151,24 @@ const App: React.FC = () => {
     } else {
         performDelete();
     }
+  };
+
+  const addFundTransfer = (transfer: Omit<FundTransfer, 'id'>) => {
+    const newTransfer: FundTransfer = {
+      ...transfer,
+      id: new Date().toISOString() + Math.random(),
+    };
+    setFundTransfers(prev => [newTransfer, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    handleCloseModal();
+  };
+
+  const addInternalTransfer = (transfer: Omit<InternalTransfer, 'id'>) => {
+    const newTransfer: InternalTransfer = {
+      ...transfer,
+      id: new Date().toISOString() + Math.random(),
+    };
+    setInternalTransfers(prev => [newTransfer, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    handleCloseModal();
   };
 
   const addCategory = (name: string) => {
@@ -225,7 +182,7 @@ const App: React.FC = () => {
   };
 
   const deleteCategory = (id: string) => {
-    setCategories(categories.filter(c => c.id !== id));
+    setCategories(prev => prev.filter(c => c.id !== id));
   };
   
   const addUnit = (name: string) => {
@@ -235,7 +192,9 @@ const App: React.FC = () => {
     }
   };
 
-  const deleteUnit = (id: string) => setUnits(units.filter(u => u.id !== id));
+  const deleteUnit = (id: string) => {
+      setUnits(prev => prev.filter(u => u.id !== id));
+  };
 
   const addMember = (memberData: Omit<Member, 'id'>) => {
     const newMember: Member = { ...memberData, id: new Date().toISOString() + Math.random() };
@@ -247,7 +206,9 @@ const App: React.FC = () => {
   };
 
   const deleteMember = (id: string) => {
-    const performDelete = () => setMembers(members.filter(m => m.id !== id));
+    const performDelete = () => {
+        setMembers(prev => prev.filter(m => m.id !== id));
+    };
     if (confirmOnDelete) {
         if (window.confirm('Sei sicuro di voler eliminare questo membro?')) {
             performDelete();
@@ -299,35 +260,48 @@ const App: React.FC = () => {
       alert('Non è possibile eliminare l\'ultimo gruppo.');
       return;
     }
-
+    
     setGroups(prev => prev.filter(g => g.id !== groupId));
+
     if (activeGroupId === groupId) {
       setActiveGroupId(null);
     }
   };
   
   const updateGroupName = (groupId: string, newName: string) => {
-    setGroups(prevGroups => 
-      prevGroups.map(group => 
+    setGroups(prev => prev.map(group => 
         group.id === groupId ? { ...group, name: newName } : group
-      )
-    );
+    ));
   };
 
   const updateGroupColor = (groupId: string, newColor: string) => {
-    setGroups(prevGroups => 
-      prevGroups.map(group => 
+    setGroups(prev => prev.map(group => 
         group.id === groupId ? { ...group, color: newColor } : group
-      )
-    );
+    ));
   };
 
   const updateGroupQuoteSettings = (groupId: string, newSettings: QuoteSettings) => {
-    setGroups(prevGroups => 
-      prevGroups.map(group => 
+    setGroups(prev => prev.map(group => 
         group.id === groupId ? { ...group, quoteSettings: newSettings } : group
-      )
-    );
+    ));
+  };
+
+  const handleSaveSelfFinancingProject = (projectData: Omit<SelfFinancingProject, 'id'> | SelfFinancingProject) => {
+    if ('id' in projectData) { // Update
+      setSelfFinancingProjects(prev => prev.map(p => p.id === projectData.id ? projectData : p));
+    } else { // Add
+      const newProject: SelfFinancingProject = { ...projectData, id: new Date().toISOString() + Math.random() };
+      setSelfFinancingProjects(prev => [...prev, newProject]);
+    }
+    handleCloseModal();
+  };
+
+  const deleteSelfFinancingProject = (projectId: string) => {
+    if (window.confirm('Sei sicuro di voler eliminare questo progetto di autofinanziamento? Le transazioni associate NON verranno eliminate ma solo scollegate.')) {
+        setSelfFinancingProjects(prev => prev.filter(p => p.id !== projectId));
+        // Unlink transactions
+        setTransactions(prev => prev.map(t => t.selfFinancingId === projectId ? { ...t, selfFinancingId: undefined } : t));
+    }
   };
 
   const handleBackup = () => {
@@ -338,7 +312,12 @@ const App: React.FC = () => {
             groups,
             members,
             units,
+            fundTransfers,
+            internalTransfers,
+            selfFinancingProjects,
             confirmOnDelete,
+            groupFundManagerId,
+            userPermissions,
         };
         const jsonString = JSON.stringify(backupData, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
@@ -357,61 +336,20 @@ const App: React.FC = () => {
     }
   };
 
-  const isValidBackupData = (data: any): boolean => {
-    if (typeof data !== 'object' || data === null) {
-        alert('File di backup non valido. Il contenuto non è un oggetto JSON valido.');
-        return false;
-    }
-
-    const arrayKeys = ['transactions', 'categories', 'groups', 'members', 'units'];
-    for (const key of arrayKeys) {
-        if (!data.hasOwnProperty(key) || !Array.isArray(data[key])) {
-            alert(`File di backup non valido: la sezione '${key}' è mancante o non è nel formato corretto (dovrebbe essere una lista).`);
-            return false;
-        }
-    }
-
-    if (!data.hasOwnProperty('confirmOnDelete') || typeof data.confirmOnDelete !== 'boolean') {
-        alert('File di backup non valido: l\'impostazione "confirmOnDelete" è mancante o non è nel formato corretto (dovrebbe essere vero/falso).');
-        return false;
-    }
-
-    return true;
-  }
-
-  const handleValidateBackup = (data: any): { isValid: boolean, summary: string } => {
-    if (!isValidBackupData(data)) {
-        return { isValid: false, summary: '' };
-    }
-    const summary = `File valido. Contiene:
-- ${data.transactions?.length || 0} Transazioni
-- ${data.groups?.length || 0} Gruppi
-- ${data.members?.length || 0} Membri
-- ${data.categories?.length || 0} Categorie
-- ${data.units?.length || 0} Unità`;
-    return { isValid: true, summary };
-  };
-
   const handleRestore = (data: any) => {
     try {
-        const migratedData = {
-            transactions: migrateTransactions(data.transactions || []),
-            categories: migrateCategories(data.categories || []),
-            groups: migrateGroups(data.groups || []),
-            members: migrateMembers(data.members || []),
-            units: migrateUnits(data.units || []),
-            confirmOnDelete: typeof data.confirmOnDelete === 'boolean' ? data.confirmOnDelete : true,
-        };
-
-        window.localStorage.setItem('transactions', JSON.stringify(migratedData.transactions));
-        window.localStorage.setItem('categories', JSON.stringify(migratedData.categories));
-        window.localStorage.setItem('groups', JSON.stringify(migratedData.groups));
-        window.localStorage.setItem('members', JSON.stringify(migratedData.members));
-        window.localStorage.setItem('units', JSON.stringify(migratedData.units));
-        window.localStorage.setItem('confirmOnDelete', JSON.stringify(migratedData.confirmOnDelete));
-
-        alert('Dati ripristinati con successo! L\'applicazione verrà ricaricata per applicare le modifiche.');
-        setTimeout(() => window.location.reload(), 500);
+        setTransactions(data.transactions || []);
+        setCategories(data.categories || INITIAL_CATEGORIES);
+        setGroups(data.groups || INITIAL_GROUPS);
+        setMembers(data.members || []);
+        setUnits(data.units || INITIAL_UNITS);
+        setFundTransfers(data.fundTransfers || []);
+        setInternalTransfers(data.internalTransfers || []);
+        setSelfFinancingProjects(data.selfFinancingProjects || []);
+        setConfirmOnDelete(data.confirmOnDelete !== undefined ? data.confirmOnDelete : true);
+        setGroupFundManagerId(data.groupFundManagerId || null);
+        setUserPermissions(data.userPermissions || INITIAL_USER_PERMISSIONS);
+        alert('Dati ripristinati con successo!');
     } catch (error) {
         console.error("Error restoring data:", error);
         alert("Si è verificato un errore durante il ripristino dei dati.");
@@ -428,70 +366,204 @@ const App: React.FC = () => {
     if (filters.endDate) filtered = filtered.filter(t => t.date <= filters.endDate);
     return filtered;
   }, [transactions, activeGroupId, filters]);
+
+  const combinedLedgerEntries = useMemo(() => {
+    const groupMap = new Map(groups.map(g => [g.id, g.name]));
+    const installmentLabels: Record<keyof MemberInstallments, string> = { first: '1° Rata', second: '2° Rata', third: '3° Rata', summerCamp: 'Campo Estivo' };
+
+    const transactionEntries: LedgerEntry[] = transactions.map(t => ({
+      id: `t-${t.id}`,
+      date: t.date,
+      type: t.type === TransactionType.INCOME ? LedgerEntryType.TRANSACTION_INCOME : LedgerEntryType.TRANSACTION_EXPENSE,
+      description: t.description,
+      amount: t.amount,
+      details: `${t.category} • ${t.paymentMethod}`,
+      groupsInvolved: [t.groupId],
+      originalObject: t,
+    }));
+
+    const installmentEntries: LedgerEntry[] = members.flatMap(m =>
+      (Object.keys(m.installments) as Array<keyof MemberInstallments>).map(key => {
+        const installment = m.installments[key];
+        if (installment.amount <= 0 || !installment.date) return null;
+        return {
+          id: `i-${m.id}-${key}`,
+          date: installment.date,
+          type: LedgerEntryType.INSTALLMENT_PAYMENT,
+          description: `Pagamento ${installmentLabels[key as keyof MemberInstallments]}`,
+          amount: installment.amount,
+          details: `${m.name} • ${installment.paymentMethod}`,
+          groupsInvolved: [m.groupId],
+          originalObject: { member: m, installmentKey: key },
+        };
+      }).filter((e): e is LedgerEntry => e !== null)
+    );
+
+    const fundTransferEntries: LedgerEntry[] = fundTransfers.map(ft => ({
+      id: `ft-${ft.id}`,
+      date: ft.date,
+      type: LedgerEntryType.FUND_TRANSFER,
+      description: ft.type === FundTransferType.WITHDRAWAL ? 'Giroconto: Prelievo da Banca' : 'Giroconto: Versamento in Banca',
+      amount: ft.totalAmount,
+      details: ft.description,
+      groupsInvolved: Object.keys(ft.distribution),
+      originalObject: ft,
+    }));
+
+    const internalTransferEntries: LedgerEntry[] = internalTransfers.map(it => ({
+        id: `it-${it.id}`,
+        date: it.date,
+        type: LedgerEntryType.INTERNAL_TRANSFER,
+        description: `Trasferimento: ${groupMap.get(it.fromGroupId)} ➞ ${groupMap.get(it.toGroupId)}`,
+        amount: it.amount,
+        details: it.description,
+        groupsInvolved: [it.fromGroupId, it.toGroupId],
+        originalObject: it,
+    }));
+    
+    return [...transactionEntries, ...installmentEntries, ...fundTransferEntries, ...internalTransferEntries]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [transactions, members, fundTransfers, internalTransfers, groups]);
+
+  const filteredLedgerEntries = useMemo(() => {
+    let filtered = combinedLedgerEntries;
+    
+    if (filters.groupId !== 'ALL') {
+      filtered = filtered.filter(e => e.groupsInvolved.includes(filters.groupId));
+    }
+    
+    if (filters.ledgerType !== 'ALL') {
+      const typesToMatch = filters.ledgerType === 'TRANSACTION_INCOME' 
+        ? [LedgerEntryType.TRANSACTION_INCOME, LedgerEntryType.INSTALLMENT_PAYMENT]
+        : [filters.ledgerType as LedgerEntryType];
+      if (filters.ledgerType === 'TRANSACTION_EXPENSE') typesToMatch.push(LedgerEntryType.TRANSACTION_EXPENSE);
+      
+      filtered = filtered.filter(e => typesToMatch.includes(e.type));
+    }
+    if (filters.text) filtered = filtered.filter(t => t.description.toLowerCase().includes(filters.text.toLowerCase()));
+    if (filters.category !== 'ALL') {
+      filtered = filtered.filter(e => {
+        if (e.type === LedgerEntryType.TRANSACTION_INCOME || e.type === LedgerEntryType.TRANSACTION_EXPENSE) {
+          return (e.originalObject as Transaction).category === filters.category;
+        }
+        return false; // Non-transactions don't have categories
+      });
+    }
+    if (filters.startDate) filtered = filtered.filter(t => t.date >= filters.startDate);
+    if (filters.endDate) filtered = filtered.filter(t => t.date <= filters.endDate);
+    return filtered;
+  }, [combinedLedgerEntries, filters]);
   
-  const hasActiveFilters = filters.text !== '' || filters.type !== 'ALL' || filters.category !== 'ALL' || filters.startDate !== '' || filters.endDate !== '';
+  const hasActiveFilters = filters.text !== '' || filters.type !== 'ALL' || filters.category !== 'ALL' || filters.startDate !== '' || filters.endDate !== '' || filters.ledgerType !== 'ALL' || filters.groupId !== 'ALL';
+
+  const permissions = currentUserRole === 'ADMIN' ? 
+    // Admin has all permissions
+    Object.keys(INITIAL_USER_PERMISSIONS).reduce((acc, key) => ({ ...acc, [key]: true }), {} as UserPermissions)
+    : userPermissions;
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
-      <Header 
-        onOpenTransactionModal={() => handleOpenModal({ type: 'transaction' })} 
-        onOpenSettings={handleSettingsClick} 
-        onExport={handleExport}
-        activeView={activeView}
-        onSetView={setActiveView}
-      />
-      
-      <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-        {activeView === 'contabilita' && (
-          <>
-            <Summary 
-              transactions={transactions} 
-              groups={groups}
-              activeGroupId={activeGroupId}
-              onSelectGroup={setActiveGroupId}
-            />
-            <div className="mt-8">
-              <FilterPanel
-                categories={categories}
-                filters={filters}
-                onFilterChange={setFilters}
-              />
-              <TransactionList 
-                transactions={filteredTransactions} 
-                groups={groups}
-                onDelete={deleteTransaction}
-                onEdit={(transaction) => handleOpenModal({ type: 'transaction', data: transaction })}
-                hasActiveFilters={hasActiveFilters}
-              />
-            </div>
-          </>
-        )}
-        {activeView === 'quote' && (
-            <QuotePanel
-                groups={groups}
-                members={members}
-                units={units}
-                onOpenMemberModal={(data) => handleOpenModal({type: 'member', data})}
-                onOpenInstallmentModal={(data) => handleOpenModal({type: 'installment', data})}
-                onDeleteMember={deleteMember}
-                onUpdateMember={updateMember}
-            />
-        )}
-        {activeView === 'conti' && (
-            <AccountsPanel 
-              transactions={transactions}
-              groups={groups}
-              members={members}
-            />
-        )}
-        {activeView === 'anticipi' && (
-            <AdvancesPanel 
-              transactions={transactions}
-              onUpdateRepayment={updateTransactionRepayment}
-            />
-        )}
-      </main>
+    <>
+      {currentUserRole === 'NONE' ? (
+        <LoginScreen onRoleSelect={handleRoleSelect} />
+      ) : (
+        <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
+          <Header 
+            onOpenTransactionModal={() => handleOpenModal({ type: 'transaction' })}
+            onOpenFundTransferModal={() => handleOpenModal({ type: 'fundTransfer' })}
+            onOpenInternalTransferModal={() => handleOpenModal({ type: 'internalTransfer' })}
+            onOpenSettings={handleSettingsClick} 
+            onExport={handleExport}
+            activeView={activeView}
+            onSetView={setActiveView}
+            permissions={permissions}
+            role={currentUserRole}
+            onLogout={handleLogout}
+          />
+          
+          <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+            {activeView === 'contabilita' && (
+              <>
+                <Summary 
+                  transactions={transactions} 
+                  groups={groups}
+                  members={members}
+                  fundTransfers={fundTransfers}
+                  internalTransfers={internalTransfers}
+                  activeGroupId={activeGroupId}
+                  onSelectGroup={setActiveGroupId}
+                  groupFundManagerId={groupFundManagerId}
+                />
+                <div className="mt-8">
+                  <FilterPanel
+                    categories={categories}
+                    filters={filters}
+                    onFilterChange={setFilters}
+                    mode={activeGroupId ? 'transactions' : 'ledger'}
+                    groups={groups}
+                  />
+                  {activeGroupId ? (
+                    <TransactionList 
+                      transactions={filteredTransactions} 
+                      groups={groups}
+                      onDelete={deleteTransaction}
+                      onEdit={(transaction) => handleOpenModal({ type: 'transaction', data: transaction })}
+                      hasActiveFilters={hasActiveFilters}
+                      permissions={permissions}
+                    />
+                  ) : (
+                    <CombinedLedger
+                      entries={filteredLedgerEntries}
+                      groups={groups}
+                      hasActiveFilters={hasActiveFilters}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+            {activeView === 'quote' && permissions.canViewQuote && (
+                <QuotePanel
+                    groups={groups}
+                    members={members}
+                    units={units}
+                    onOpenMemberModal={(data) => handleOpenModal({type: 'member', data})}
+                    onOpenInstallmentModal={(data) => handleOpenModal({type: 'installment', data})}
+                    onDeleteMember={deleteMember}
+                    onUpdateMember={updateMember}
+                    permissions={permissions}
+                />
+            )}
+            {activeView === 'conti' && permissions.canViewConti && (
+                <AccountsPanel 
+                  transactions={transactions}
+                  groups={groups}
+                  members={members}
+                  fundTransfers={fundTransfers}
+                  internalTransfers={internalTransfers}
+                  groupFundManagerId={groupFundManagerId}
+                />
+            )}
+            {activeView === 'anticipi' && permissions.canViewAnticipi && (
+                <AdvancesPanel 
+                  transactions={transactions}
+                  onUpdateRepayment={updateTransactionRepayment}
+                />
+            )}
+             {activeView === 'autofinanziamenti' && permissions.canViewAutofinanziamenti && (
+                <SelfFinancingPanel
+                    projects={selfFinancingProjects}
+                    transactions={transactions}
+                    groups={groups}
+                    onOpenProjectModal={(data) => handleOpenModal({ type: 'selfFinancingProject', data })}
+                    onDeleteProject={deleteSelfFinancingProject}
+                    onOpenTransactionModal={(context) => handleOpenModal({ type: 'transaction', context })}
+                    permissions={permissions}
+                />
+            )}
+          </main>
+        </div>
+      )}
 
+      {/* Modals are rendered here at the top level to overlay any screen */}
       {currentModal?.type === 'transaction' && (
         <Modal title={currentModal.data ? "Modifica Transazione" : "Aggiungi Transazione"} onClose={handleCloseModal}>
           <TransactionForm 
@@ -500,6 +572,27 @@ const App: React.FC = () => {
             groups={groups}
             members={members}
             initialData={currentModal.data}
+            context={currentModal.context}
+          />
+        </Modal>
+      )}
+
+      {currentModal?.type === 'fundTransfer' && (
+        <Modal title="Nuovo Giroconto" onClose={handleCloseModal}>
+          <FundTransferForm
+            groups={groups}
+            onSave={addFundTransfer}
+          />
+        </Modal>
+      )}
+
+      {currentModal?.type === 'internalTransfer' && groupFundManagerId && (
+        <Modal title="Nuovo Trasferimento Interno" onClose={handleCloseModal}>
+          <InternalTransferForm
+            groups={groups}
+            onSave={addInternalTransfer}
+            managerGroupId={groupFundManagerId}
+            internalTransfers={internalTransfers}
           />
         </Modal>
       )}
@@ -510,8 +603,19 @@ const App: React.FC = () => {
           onSuccess={handleLoginSuccess}
         />
       )}
+      
+      {currentModal?.type === 'selfFinancingProject' && (
+        <Modal title={currentModal.data ? "Modifica Progetto" : "Nuovo Progetto di Autofinanziamento"} onClose={handleCloseModal}>
+          <SelfFinancingProjectForm
+            groups={groups}
+            onSave={handleSaveSelfFinancingProject}
+            initialData={currentModal.data}
+            onClose={handleCloseModal}
+          />
+        </Modal>
+      )}
 
-      {currentModal?.type === 'settings' && (
+      {currentModal?.type === 'settings' && currentUserRole === 'ADMIN' && (
         <Modal title="Impostazioni Amministratore" onClose={handleCloseModal} size="3xl">
             <SettingsPanel
                 categories={categories}
@@ -529,8 +633,11 @@ const App: React.FC = () => {
                 confirmOnDelete={confirmOnDelete}
                 onSetConfirmOnDelete={setConfirmOnDelete}
                 onBackup={handleBackup}
-                onValidateBackup={handleValidateBackup}
                 onRestore={handleRestore}
+                groupFundManagerId={groupFundManagerId}
+                onSetGroupFundManagerId={setGroupFundManagerId}
+                userPermissions={userPermissions}
+                onSetUserPermissions={setUserPermissions}
             />
         </Modal>
       )}
@@ -559,7 +666,7 @@ const App: React.FC = () => {
               />
           )
       })()}
-    </div>
+    </>
   );
 };
 

@@ -1,3 +1,4 @@
+
 import { Transaction, Group } from '../types';
 
 export const exportToCsv = (transactions: Transaction[], filename: string, groups: Group[]): void => {

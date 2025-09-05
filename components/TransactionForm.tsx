@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Transaction, TransactionType, PaymentMethod, Category, Group, Member } from '../types';
 import { PAYMENT_METHODS } from '../constants';
@@ -8,14 +9,15 @@ interface TransactionFormProps {
   groups: Group[];
   members: Member[];
   initialData?: Transaction | null;
+  context?: { selfFinancingId: string; groupId: string; };
 }
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, categories, groups, members, initialData }) => {
+const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, categories, groups, members, initialData, context }) => {
   const [type, setType] = useState<TransactionType>(TransactionType.EXPENSE);
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [groupId, setGroupId] = useState<string>(groups[0]?.id || '');
+  const [groupId, setGroupId] = useState<string>(context?.groupId || groups[0]?.id || '');
   const [category, setCategory] = useState<string>(categories[0]?.name || '');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CARD);
   const [isCampExpense, setIsCampExpense] = useState<boolean>(false);
@@ -56,13 +58,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, categories, g
       date,
       groupId,
       type,
-      category: type === TransactionType.EXPENSE ? category : '',
+      category: category,
       paymentMethod,
       isCampExpense,
       advancedBy: type === TransactionType.EXPENSE && isAdvanced ? advancedByMember : null,
       repaid: initialData?.repaid || false,
       repaidDate: initialData?.repaidDate || null,
       repaymentMethod: initialData?.repaymentMethod || null,
+      selfFinancingId: initialData?.selfFinancingId || context?.selfFinancingId,
     }, initialData?.id);
   };
   
@@ -130,12 +133,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, categories, g
             />
         </div>
         
-        {/* Group and Payment Method */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Group, Payment Method, and Category */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <label htmlFor={`${formId}-group`} className="block text-sm font-medium text-slate-700">Gruppo</label>
-                <select id={`${formId}-group`} value={groupId} onChange={(e) => setGroupId(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                <select id={`${formId}-group`} value={groupId} onChange={(e) => setGroupId(e.target.value)} disabled={!!context} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md disabled:bg-slate-100 disabled:cursor-not-allowed">
                     {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+            </div>
+             <div>
+                <label htmlFor={`${formId}-category`} className="block text-sm font-medium text-slate-700">Categoria</label>
+                <select id={`${formId}-category`} value={category} onChange={(e) => setCategory(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
             </div>
             <div>
@@ -163,13 +172,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSave, categories, g
         {/* Expense Specific Fields */}
         {type === TransactionType.EXPENSE && (
           <div className="p-3 bg-slate-50 rounded-md border border-slate-200 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                  <label htmlFor={`${formId}-category`} className="block text-sm font-medium text-slate-700">Categoria</label>
-                  <select id={`${formId}-category`} value={category} onChange={(e) => setCategory(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
-                      {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                  </select>
-              </div>
+            <div className="grid grid-cols-1">
               <div>
                   <label htmlFor={`${formId}-isAdvanced`} className="block text-sm font-medium text-slate-700">Hai anticipato la spesa?</label>
                   <select

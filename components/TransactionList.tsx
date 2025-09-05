@@ -1,5 +1,5 @@
 import React from 'react';
-import { Transaction, TransactionType, Group } from '../types';
+import { Transaction, TransactionType, Group, UserPermissions } from '../types';
 import { TrashIcon, PencilIcon } from './icons/Icons';
 
 interface TransactionListProps {
@@ -8,9 +8,10 @@ interface TransactionListProps {
   onDelete: (id: string) => void;
   onEdit: (transaction: Transaction) => void;
   hasActiveFilters: boolean;
+  permissions: UserPermissions;
 }
 
-const TransactionList: React.FC<TransactionListProps> = ({ transactions, groups, onDelete, onEdit, hasActiveFilters }) => {
+const TransactionList: React.FC<TransactionListProps> = ({ transactions, groups, onDelete, onEdit, hasActiveFilters, permissions }) => {
   const groupMap = new Map(groups.map(g => [g.id, g]));
 
   const formatCurrency = (amount: number) => {
@@ -43,13 +44,16 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, groups,
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Descrizione</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Importo</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data</th>
-              <th scope="col" className="relative px-6 py-3"><span className="sr-only">Azioni</span></th>
+              {(permissions.canEditTransaction || permissions.canDeleteTransaction) && (
+                <th scope="col" className="relative px-6 py-3"><span className="sr-only">Azioni</span></th>
+              )}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-200">
             {transactions.map(t => {
               const groupInfo = groupMap.get(t.groupId);
               const isIncome = t.type === TransactionType.INCOME;
+              const details = [t.category, t.paymentMethod].filter(Boolean).join(' - ');
               return (
                 <tr key={t.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -61,7 +65,7 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, groups,
                     <div className="text-sm font-medium text-slate-900">{t.description}</div>
                     <div className="text-sm text-slate-500">
                       <div className="flex items-center">
-                          <span>{t.type === TransactionType.EXPENSE ? `${t.category} - ${t.paymentMethod}` : t.paymentMethod}</span>
+                          <span>{details}</span>
                           {t.isCampExpense && (
                             <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
                               Campo
@@ -81,16 +85,22 @@ const TransactionList: React.FC<TransactionListProps> = ({ transactions, groups,
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                     {new Date(t.date).toLocaleDateString('it-IT', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex items-center justify-end space-x-3">
-                       <button onClick={() => onEdit(t)} className="text-blue-600 hover:text-blue-900 transition-colors" aria-label={`Modifica transazione ${t.description}`}>
-                        <PencilIcon className="w-5 h-5"/>
-                       </button>
-                       <button onClick={() => onDelete(t.id)} className="text-red-600 hover:text-red-900 transition-colors" aria-label={`Elimina transazione ${t.description}`}>
-                         <TrashIcon className="w-5 h-5"/>
-                       </button>
-                    </div>
-                  </td>
+                  {(permissions.canEditTransaction || permissions.canDeleteTransaction) && (
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex items-center justify-end space-x-3">
+                        {permissions.canEditTransaction && (
+                          <button onClick={() => onEdit(t)} className="text-blue-600 hover:text-blue-900 transition-colors" aria-label={`Modifica transazione ${t.description}`}>
+                            <PencilIcon className="w-5 h-5"/>
+                          </button>
+                        )}
+                        {permissions.canDeleteTransaction && (
+                          <button onClick={() => onDelete(t.id)} className="text-red-600 hover:text-red-900 transition-colors" aria-label={`Elimina transazione ${t.description}`}>
+                            <TrashIcon className="w-5 h-5"/>
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               );
             })}

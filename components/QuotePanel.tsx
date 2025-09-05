@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Group, Member, Unit, MemberInstallments, Siblings } from '../types';
+import { Group, Member, Unit, MemberInstallments, Siblings, UserPermissions } from '../types';
 import { PlusIcon, TrashIcon, PencilIcon } from './icons/Icons';
 import { SIBLINGS_OPTIONS } from '../constants';
 
@@ -11,6 +11,7 @@ interface QuotePanelProps {
     onOpenInstallmentModal: (data: { member: Member; installmentKey: keyof MemberInstallments }) => void;
     onDeleteMember: (id: string) => void;
     onUpdateMember: (member: Member) => void;
+    permissions: UserPermissions;
 }
 
 const installmentKeys: (keyof MemberInstallments)[] = ['first', 'second', 'third', 'summerCamp'];
@@ -23,7 +24,7 @@ const installmentLabels: Record<keyof MemberInstallments, string> = {
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(amount);
 
-const QuotePanel: React.FC<QuotePanelProps> = ({ groups, members, units, onOpenMemberModal, onOpenInstallmentModal, onDeleteMember, onUpdateMember }) => {
+const QuotePanel: React.FC<QuotePanelProps> = ({ groups, members, units, onOpenMemberModal, onOpenInstallmentModal, onDeleteMember, onUpdateMember, permissions }) => {
     const [activeGroupId, setActiveGroupId] = useState<string>(groups[0]?.id || '');
     const filteredMembers = members.filter(m => m.groupId === activeGroupId);
     
@@ -46,6 +47,8 @@ const QuotePanel: React.FC<QuotePanelProps> = ({ groups, members, units, onOpenM
     const handleFieldChange = (member: Member, field: 'unit' | 'siblings', value: string) => {
         onUpdateMember({ ...member, [field]: value });
     };
+    
+    const canEditFields = permissions.canEditMembers;
 
     return (
         <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg space-y-6">
@@ -85,15 +88,18 @@ const QuotePanel: React.FC<QuotePanelProps> = ({ groups, members, units, onOpenM
                 </div>
             </div>
 
-            <div className="flex justify-end -mt-2">
-                <button
-                    onClick={() => onOpenMemberModal({ groupId: activeGroupId })}
-                    className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors duration-200 text-sm font-medium shadow"
-                >
-                    <PlusIcon className="h-5 w-5 mr-2" />
-                    Aggiungi Ragazzo
-                </button>
-            </div>
+            {permissions.canEditMembers && (
+                <div className="flex justify-end -mt-2">
+                    <button
+                        onClick={() => onOpenMemberModal({ groupId: activeGroupId })}
+                        className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors duration-200 text-sm font-medium shadow"
+                    >
+                        <PlusIcon className="h-5 w-5 mr-2" />
+                        Aggiungi Ragazzo
+                    </button>
+                </div>
+            )}
+
 
             {/* Members Table */}
             <div className="overflow-x-auto">
@@ -104,7 +110,7 @@ const QuotePanel: React.FC<QuotePanelProps> = ({ groups, members, units, onOpenM
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Sestiglia/Squadriglia</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Fratelli</th>
                             {installmentKeys.map(key => <th key={key} scope="col" className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">{installmentLabels[key]}</th>)}
-                            <th scope="col" className="relative px-4 py-3"><span className="sr-only">Azioni</span></th>
+                            {canEditFields && <th scope="col" className="relative px-4 py-3"><span className="sr-only">Azioni</span></th>}
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
@@ -112,13 +118,13 @@ const QuotePanel: React.FC<QuotePanelProps> = ({ groups, members, units, onOpenM
                             <tr key={member.id} className="hover:bg-slate-50">
                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-900">{member.name}</td>
                                 <td className="px-4 py-3 whitespace-nowrap text-sm">
-                                    <select value={member.unit} onChange={(e) => handleFieldChange(member, 'unit', e.target.value)} className="mt-1 block w-full pl-3 pr-8 py-1 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                                    <select value={member.unit} onChange={(e) => handleFieldChange(member, 'unit', e.target.value)} disabled={!canEditFields} className="mt-1 block w-full pl-3 pr-8 py-1 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md disabled:bg-slate-100 disabled:cursor-not-allowed">
                                         <option value="">Nessuna</option>
                                         {units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                                     </select>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-sm">
-                                    <select value={member.siblings} onChange={(e) => handleFieldChange(member, 'siblings', e.target.value)} className="mt-1 block w-full pl-3 pr-8 py-1 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                                    <select value={member.siblings} onChange={(e) => handleFieldChange(member, 'siblings', e.target.value)} disabled={!canEditFields} className="mt-1 block w-full pl-3 pr-8 py-1 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md disabled:bg-slate-100 disabled:cursor-not-allowed">
                                         {SIBLINGS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                 </td>
@@ -126,7 +132,7 @@ const QuotePanel: React.FC<QuotePanelProps> = ({ groups, members, units, onOpenM
                                     const installment = member.installments[key];
                                     return (
                                         <td key={key} className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 text-right align-top">
-                                            <button onClick={() => onOpenInstallmentModal({ member, installmentKey: key })} className="w-full text-right hover:bg-slate-200 p-1 rounded transition-colors text-sm">
+                                            <button onClick={() => permissions.canEditInstallments && onOpenInstallmentModal({ member, installmentKey: key })} disabled={!permissions.canEditInstallments} className="w-full text-right hover:bg-slate-200 p-1 rounded transition-colors text-sm disabled:cursor-not-allowed disabled:hover:bg-transparent">
                                                 {installment.amount > 0 ? (
                                                     <div>
                                                         <span className="font-semibold text-slate-800">{formatCurrency(installment.amount)}</span>
@@ -148,20 +154,22 @@ const QuotePanel: React.FC<QuotePanelProps> = ({ groups, members, units, onOpenM
                                         </td>
                                     )
                                 })}
-                                <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium align-top">
-                                    <div className="flex items-center justify-end space-x-3">
-                                        <button onClick={() => onOpenMemberModal({ member, groupId: activeGroupId })} className="text-blue-600 hover:text-blue-900 transition-colors" aria-label={`Modifica membro ${member.name}`}>
-                                            <PencilIcon className="w-5 h-5"/>
-                                        </button>
-                                        <button onClick={() => onDeleteMember(member.id)} className="text-red-600 hover:text-red-900 transition-colors" aria-label={`Elimina membro ${member.name}`}>
-                                            <TrashIcon className="w-5 h-5"/>
-                                        </button>
-                                    </div>
-                                </td>
+                                {canEditFields && (
+                                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium align-top">
+                                        <div className="flex items-center justify-end space-x-3">
+                                            <button onClick={() => onOpenMemberModal({ member, groupId: activeGroupId })} className="text-blue-600 hover:text-blue-900 transition-colors" aria-label={`Modifica membro ${member.name}`}>
+                                                <PencilIcon className="w-5 h-5"/>
+                                            </button>
+                                            <button onClick={() => onDeleteMember(member.id)} className="text-red-600 hover:text-red-900 transition-colors" aria-label={`Elimina membro ${member.name}`}>
+                                                <TrashIcon className="w-5 h-5"/>
+                                            </button>
+                                        </div>
+                                    </td>
+                                )}
                             </tr>
                         )) : (
                             <tr>
-                                <td colSpan={8} className="text-center py-10 px-4 text-sm text-slate-500">
+                                <td colSpan={canEditFields ? 8 : 7} className="text-center py-10 px-4 text-sm text-slate-500">
                                     Nessun membro in questo gruppo. Inizia aggiungendone uno.
                                 </td>
                             </tr>

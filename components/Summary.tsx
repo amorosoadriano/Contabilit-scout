@@ -1,48 +1,109 @@
 
+
 import React, { useMemo } from 'react';
-import { Transaction, Group, TransactionType, PaymentMethod } from '../types';
+import { Transaction, Group, TransactionType, PaymentMethod, FundTransfer, FundTransferType, InternalTransfer, Member } from '../types';
 
 interface SummaryProps {
   transactions: Transaction[];
   groups: Group[];
+  fundTransfers: FundTransfer[];
+  internalTransfers: InternalTransfer[];
+  members: Member[];
   activeGroupId: string | null;
   onSelectGroup: (groupId: string | null) => void;
+  groupFundManagerId: string | null;
 }
 
-const Summary: React.FC<SummaryProps> = ({ transactions, groups, activeGroupId, onSelectGroup }) => {
+const Summary: React.FC<SummaryProps> = ({ transactions, groups, fundTransfers, internalTransfers, members, activeGroupId, onSelectGroup, groupFundManagerId }) => {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(amount);
   };
 
   const totalBalance = useMemo(() => {
-    return transactions.reduce((acc, t) => {
+    const transactionBalance = transactions.reduce((acc, t) => {
       return t.type === TransactionType.INCOME ? acc + t.amount : acc - t.amount;
     }, 0);
-  }, [transactions]);
+
+    const quoteBalance = members.reduce((acc, member) => {
+      const installmentsTotal = Object.values(member.installments).reduce((sum, inst) => sum + inst.amount, 0);
+      return acc + installmentsTotal;
+    }, 0);
+
+    return transactionBalance + quoteBalance;
+  }, [transactions, members]);
 
   const groupBalances = useMemo(() => {
     const balances = new Map<string, { cash: number; bank: number; total: number }>();
     
     groups.forEach(g => balances.set(g.id, { cash: 0, bank: 0, total: 0 }));
 
+    // Process standard transactions
     transactions.forEach(t => {
         const currentBalances = balances.get(t.groupId);
         if (!currentBalances) return;
-
         const amount = t.type === TransactionType.INCOME ? t.amount : -t.amount;
-        
         if (t.paymentMethod === PaymentMethod.CASH) {
             currentBalances.cash += amount;
-        } else { // CARD or TRANSFER
+        } else {
             currentBalances.bank += amount;
         }
-        currentBalances.total = currentBalances.cash + currentBalances.bank;
+    });
 
-        balances.set(t.groupId, currentBalances);
+    // Process member installments
+    members.forEach(m => {
+        const groupBalance = balances.get(m.groupId);
+        if (!groupBalance) return;
+        Object.values(m.installments).forEach(inst => {
+            if (inst.amount > 0 && inst.paymentMethod) {
+                if (inst.paymentMethod === PaymentMethod.CASH) {
+                    groupBalance.cash += inst.amount;
+                } else {
+                    groupBalance.bank += inst.amount;
+                }
+            }
+        });
+    });
+
+    // Process fund transfers (Giroconti)
+    fundTransfers.forEach(ft => {
+        const managerBalance = groupFundManagerId ? balances.get(groupFundManagerId) : null;
+        if (managerBalance) {
+            if (ft.type === FundTransferType.WITHDRAWAL) managerBalance.bank -= ft.totalAmount;
+            else managerBalance.bank += ft.totalAmount;
+        }
+        Object.entries(ft.distribution).forEach(([groupId, amount]) => {
+            const groupBalance = balances.get(groupId);
+            if (groupBalance) {
+                if (ft.type === FundTransferType.WITHDRAWAL) groupBalance.cash += amount;
+                else groupBalance.cash -= amount;
+            }
+        });
+    });
+    
+    // Process internal transfers (Loans/Repayments)
+    internalTransfers.forEach(it => {
+        const fromGroupBalance = balances.get(it.fromGroupId);
+        const toGroupBalance = balances.get(it.toGroupId);
+
+        if (fromGroupBalance && toGroupBalance) {
+            if (it.paymentMethod === PaymentMethod.CASH) {
+                fromGroupBalance.cash -= it.amount;
+                toGroupBalance.cash += it.amount;
+            } else { // TRANSFER
+                fromGroupBalance.bank -= it.amount;
+                toGroupBalance.bank += it.amount;
+            }
+        }
+    });
+
+    // Recalculate totals
+    balances.forEach((value, key) => {
+        value.total = value.cash + value.bank;
+        balances.set(key, value);
     });
 
     return balances;
-  }, [transactions, groups]);
+  }, [transactions, groups, fundTransfers, internalTransfers, groupFundManagerId, members]);
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">

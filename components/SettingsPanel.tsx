@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Category, Group, Unit, QuoteSettings } from '../types';
+import { Category, Group, Unit, QuoteSettings, UserPermissions } from '../types';
 import CategoryManager from './CategoryManager';
 import { GROUP_COLORS } from '../constants';
 import UnitManager from './UnitManager';
@@ -7,6 +7,7 @@ import QuoteManager from './QuoteManager';
 import { PlusIcon, TrashIcon } from './icons/Icons';
 import GroupFeeManager from './GroupFeeManager';
 import BackupManager from './BackupManager';
+import PermissionsManager from './PermissionsManager';
 
 interface SettingsPanelProps {
   categories: Category[];
@@ -24,11 +25,14 @@ interface SettingsPanelProps {
   confirmOnDelete: boolean;
   onSetConfirmOnDelete: (value: boolean) => void;
   onBackup: () => void;
-  onValidateBackup: (data: any) => { isValid: boolean, summary: string };
   onRestore: (data: any) => void;
+  groupFundManagerId: string | null;
+  onSetGroupFundManagerId: (groupId: string) => void;
+  userPermissions: UserPermissions;
+  onSetUserPermissions: (permissions: UserPermissions) => void;
 }
 
-type ActiveTab = 'groups' | 'categories' | 'units' | 'quotes' | 'groupFees' | 'prefs' | 'backup';
+type ActiveTab = 'groups' | 'categories' | 'units' | 'quotes' | 'groupFees' | 'prefs' | 'permissions' | 'backup';
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   categories,
@@ -46,8 +50,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   confirmOnDelete,
   onSetConfirmOnDelete,
   onBackup,
-  onValidateBackup,
   onRestore,
+  groupFundManagerId,
+  onSetGroupFundManagerId,
+  userPermissions,
+  onSetUserPermissions,
 }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('groups');
   const [groupNames, setGroupNames] = useState<Record<string, string>>(
@@ -100,6 +107,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <TabButton tabId="units">Gestisci Unità</TabButton>
           <TabButton tabId="quotes">Gestione Rate</TabButton>
           <TabButton tabId="groupFees">Gestione Quote Gruppo</TabButton>
+          <TabButton tabId="permissions">Permessi Utente</TabButton>
           <TabButton tabId="prefs">Preferenze</TabButton>
           <TabButton tabId="backup">Backup & Ripristino</TabButton>
         </nav>
@@ -243,28 +251,52 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 )}
             </div>
         )}
+
+        {activeTab === 'permissions' && (
+            <PermissionsManager permissions={userPermissions} onSetPermissions={onSetUserPermissions} />
+        )}
         
         {activeTab === 'prefs' && (
             <div className="space-y-4">
                 <h3 className="text-lg font-medium text-slate-800">Preferenze Applicazione</h3>
-                <div className="flex items-center justify-between bg-slate-100 p-3 rounded-md">
-                    <label htmlFor="confirm-delete" className="text-sm font-medium text-slate-800">
-                        Chiedi conferma prima di eliminare
+                <div className="bg-slate-100 p-3 rounded-md space-y-4">
+                  <div className="flex items-center justify-between">
+                      <label htmlFor="confirm-delete" className="text-sm font-medium text-slate-800">
+                          Chiedi conferma prima di eliminare
+                      </label>
+                      <button
+                          id="confirm-delete"
+                          onClick={() => onSetConfirmOnDelete(!confirmOnDelete)}
+                          className={`${
+                          confirmOnDelete ? 'bg-blue-600' : 'bg-slate-300'
+                          } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
+                          role="switch"
+                          aria-checked={confirmOnDelete}
+                      >
+                          <span className={`${
+                          confirmOnDelete ? 'translate-x-6' : 'translate-x-1'
+                          } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                          />
+                      </button>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200">
+                    <label htmlFor="group-fund-manager" className="block text-sm font-medium text-slate-800 mb-1">
+                        Gruppo Gestore Cassa di Gruppo
                     </label>
-                    <button
-                        id="confirm-delete"
-                        onClick={() => onSetConfirmOnDelete(!confirmOnDelete)}
-                        className={`${
-                        confirmOnDelete ? 'bg-blue-600' : 'bg-slate-300'
-                        } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
-                        role="switch"
-                        aria-checked={confirmOnDelete}
+                    <p className="text-xs text-slate-500 mb-2">
+                        Le spese di questo gruppo verranno sottratte dal fondo comune "Cassa di Gruppo".
+                    </p>
+                     <select
+                        id="group-fund-manager"
+                        value={groupFundManagerId || ''}
+                        onChange={(e) => onSetGroupFundManagerId(e.target.value)}
+                        className="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                        aria-label="Seleziona il gruppo gestore della cassa di gruppo"
+                        disabled={groups.length === 0}
                     >
-                        <span className={`${
-                        confirmOnDelete ? 'translate-x-6' : 'translate-x-1'
-                        } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                        />
-                    </button>
+                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                  </div>
                 </div>
             </div>
         )}
@@ -272,7 +304,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {activeTab === 'backup' && (
             <BackupManager 
                 onBackup={onBackup} 
-                onValidate={onValidateBackup} 
                 onRestore={onRestore} 
             />
         )}
