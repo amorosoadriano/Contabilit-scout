@@ -1,0 +1,5 @@
+{
+  "name": "Gestore Contabilità di Gruppo",
+  "description": "Un'applicazione per gestire le entrate e le uscite di 5 gruppi diversi che attingono da una cassa comune. Permette di categorizzare le spese, tracciare i metodi di pagamento e esportare report.",
+  "requestFramePermissions": []
+}
