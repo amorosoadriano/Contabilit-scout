@@ -6,12 +6,21 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  size?: 'md' | 'lg' | 'xl' | '2xl' | '3xl';
 }
 
-const Modal: React.FC<ModalProps> = ({ title, onClose, children }) => {
+const Modal: React.FC<ModalProps> = ({ title, onClose, children, size = 'lg' }) => {
+  const sizeClasses = {
+    md: 'max-w-md',
+    lg: 'max-w-lg',
+    xl: 'max-w-xl',
+    '2xl': 'max-w-2xl',
+    '3xl': 'max-w-3xl',
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" aria-modal="true" role="dialog">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className={`bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col`}>
         <div className="flex justify-between items-center p-4 border-b border-slate-200">
           <h2 className="text-xl font-semibold text-slate-800">{title}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">

@@ -16,7 +16,12 @@ export const exportToCsv = (transactions: Transaction[], filename: string, group
     'Tipo',
     'Categoria',
     'Importo',
-    'Metodo di Pagamento'
+    'Metodo di Pagamento',
+    'Spese per Campo',
+    'Anticipato Da',
+    'Restituita',
+    'Data Restituzione',
+    'Metodo Rimborso'
   ];
 
   const rows = transactions.map(t => [
@@ -27,7 +32,12 @@ export const exportToCsv = (transactions: Transaction[], filename: string, group
     t.type === 'INCOME' ? 'Entrata' : 'Uscita',
     t.category,
     t.type === 'INCOME' ? t.amount : -t.amount,
-    t.paymentMethod
+    t.paymentMethod,
+    t.isCampExpense ? 'Sì' : 'No',
+    t.advancedBy || '',
+    t.repaid ? 'Sì' : 'No',
+    t.repaidDate || '',
+    t.repaymentMethod || ''
   ].join(','));
 
   const csvContent = [headers.join(','), ...rows].join('\n');

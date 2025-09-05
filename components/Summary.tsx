@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { Transaction, Group, TransactionType } from '../types';
+import { Transaction, Group, TransactionType, PaymentMethod } from '../types';
 
 interface SummaryProps {
   transactions: Transaction[];
@@ -21,13 +21,26 @@ const Summary: React.FC<SummaryProps> = ({ transactions, groups, activeGroupId, 
   }, [transactions]);
 
   const groupBalances = useMemo(() => {
-    const balances = new Map<string, number>();
-    groups.forEach(g => balances.set(g.id, 0));
+    const balances = new Map<string, { cash: number; bank: number; total: number }>();
+    
+    groups.forEach(g => balances.set(g.id, { cash: 0, bank: 0, total: 0 }));
+
     transactions.forEach(t => {
-      const currentBalance = balances.get(t.groupId) || 0;
-      const newBalance = t.type === TransactionType.INCOME ? currentBalance + t.amount : currentBalance - t.amount;
-      balances.set(t.groupId, newBalance);
+        const currentBalances = balances.get(t.groupId);
+        if (!currentBalances) return;
+
+        const amount = t.type === TransactionType.INCOME ? t.amount : -t.amount;
+        
+        if (t.paymentMethod === PaymentMethod.CASH) {
+            currentBalances.cash += amount;
+        } else { // CARD or TRANSFER
+            currentBalances.bank += amount;
+        }
+        currentBalances.total = currentBalances.cash + currentBalances.bank;
+
+        balances.set(t.groupId, currentBalances);
     });
+
     return balances;
   }, [transactions, groups]);
 
@@ -47,18 +60,24 @@ const Summary: React.FC<SummaryProps> = ({ transactions, groups, activeGroupId, 
           <h3 className="font-bold text-md">Tutti i Gruppi</h3>
         </div>
         {groups.map(group => {
-            const balance = groupBalances.get(group.id) || 0;
+            const balances = groupBalances.get(group.id) || { total: 0, cash: 0, bank: 0 };
             const isActive = activeGroupId === group.id;
             return (
                 <div
                     key={group.id}
                     onClick={() => onSelectGroup(group.id)}
-                    className={`p-4 rounded-lg cursor-pointer transition-all duration-200 ${isActive ? `${group.color} text-white shadow-xl scale-105` : 'bg-slate-200 hover:bg-slate-300'}`}
+                    className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex flex-col justify-between ${isActive ? `${group.color} text-white shadow-xl scale-105` : 'bg-slate-200 hover:bg-slate-300'}`}
                 >
-                    <h3 className="font-bold text-md">{group.name}</h3>
-                    <p className={`font-semibold text-lg ${isActive ? 'text-white' : (balance >= 0 ? 'text-green-700' : 'text-red-700')}`}>
-                        {formatCurrency(balance)}
-                    </p>
+                    <h3 className="font-bold text-md mb-1">{group.name}</h3>
+                    <div>
+                        <p className={`font-semibold text-lg ${isActive ? 'text-white' : (balances.total >= 0 ? 'text-green-700' : 'text-red-700')}`}>
+                            {formatCurrency(balances.total)}
+                        </p>
+                        <div className={`text-xs mt-1 ${isActive ? 'text-white/80' : 'text-slate-500'}`}>
+                            <p>Contanti: {formatCurrency(balances.cash)}</p>
+                            <p>Banca: {formatCurrency(balances.bank)}</p>
+                        </div>
+                    </div>
                 </div>
             )
         })}

@@ -1,13 +1,30 @@
 import React from 'react';
-import { PlusIcon, CogIcon, DownloadIcon } from './icons/Icons';
+import { PlusIcon, CogIcon, DownloadIcon, UsersIcon, ClipboardDocumentListIcon, BanknotesIcon, ArrowUturnLeftIcon } from './icons/Icons';
+import { ViewType } from '../types';
 
 interface HeaderProps {
   onOpenTransactionModal: () => void;
   onOpenSettings: () => void;
   onExport: () => void;
+  activeView: ViewType;
+  onSetView: (view: ViewType) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onOpenTransactionModal, onOpenSettings, onExport }) => {
+const NavButton: React.FC<{ onClick: () => void; isActive: boolean; children: React.ReactNode; icon: React.ReactNode;}> = ({ onClick, isActive, children, icon }) => (
+    <button
+        onClick={onClick}
+        className={`flex items-center px-3 py-3 text-sm font-medium border-b-2 transition-colors duration-200 ${
+            isActive 
+            ? 'border-blue-600 text-blue-600' 
+            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+        }`}
+    >
+        {icon}
+        {children}
+    </button>
+)
+
+const Header: React.FC<HeaderProps> = ({ onOpenTransactionModal, onOpenSettings, onExport, activeView, onSetView }) => {
   return (
     <header className="bg-white shadow-md sticky top-0 z-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -42,6 +59,36 @@ const Header: React.FC<HeaderProps> = ({ onOpenTransactionModal, onOpenSettings,
             </button>
           </div>
         </div>
+        <nav className="flex space-x-2 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 overflow-x-auto">
+            <NavButton 
+                onClick={() => onSetView('contabilita')} 
+                isActive={activeView === 'contabilita'}
+                icon={<ClipboardDocumentListIcon className="h-5 w-5 mr-2" />}
+            >
+                Contabilità
+            </NavButton>
+            <NavButton 
+                onClick={() => onSetView('quote')} 
+                isActive={activeView === 'quote'}
+                icon={<UsersIcon className="h-5 w-5 mr-2" />}
+            >
+                Quote
+            </NavButton>
+            <NavButton 
+                onClick={() => onSetView('conti')} 
+                isActive={activeView === 'conti'}
+                icon={<BanknotesIcon className="h-5 w-5 mr-2" />}
+            >
+                Conti
+            </NavButton>
+            <NavButton 
+                onClick={() => onSetView('anticipi')} 
+                isActive={activeView === 'anticipi'}
+                icon={<ArrowUturnLeftIcon className="h-5 w-5 mr-2" />}
+            >
+                Anticipi
+            </NavButton>
+        </nav>
       </div>
     </header>
   );

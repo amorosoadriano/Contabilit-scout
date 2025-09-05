@@ -1,13 +1,22 @@
-
 import { useState, useEffect } from 'react';
 
-function useLocalStorage<T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+function useLocalStorage<T,>(key: string, initialValue: T, migrationFunc?: (data: any) => T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
       const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
+      if (!item) {
+        return initialValue;
+      }
+
+      let parsedData = JSON.parse(item);
+      
+      if (migrationFunc) {
+        parsedData = migrationFunc(parsedData);
+      }
+      
+      return parsedData;
     } catch (error) {
-      console.error(error);
+      console.error(`Error reading or migrating localStorage key "${key}":`, error);
       return initialValue;
     }
   });
